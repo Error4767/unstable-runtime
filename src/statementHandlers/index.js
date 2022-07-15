@@ -15,36 +15,23 @@ function findLoopScope(scopes) {
 // 存放循环作用域的信息的 map (scope -> loopScopeInfos)
 const loopScopesInfos = new WeakMap();
 
-// 循环体标记
-const LOOP_BODY_IDENTIFIER = Symbol("LOOP_BODY_IDENTIFIER");
-
 function executeBody(t, scopes) {
-    let loopScopeInfo = loopScopesInfos.get(scopes.at(-1));
-    if (!loopScopeInfo) {
-        loopScopeInfo = loopScopesInfos.get(findLoopScope(scopes));
-    }
-    if (loopScopeInfo?.breaked || loopScopeInfo?.continued) {
-        return;
-    }
+    let loopScopeInfo = loopScopesInfos.get(findLoopScope(scopes));
     const stackInfo = stackInfos.get(findStack(scopes));
 
-    if(stackInfo?.returned) {
+    if (loopScopeInfo?.breaked || loopScopeInfo?.continued || stackInfo?.returned) {
         return;
     }
 
     // 运行主体代码
     t.body?.some(stmt => {
-        // 循环 break, continue
-        if (loopScopeInfo?.breaked || loopScopeInfo?.continued) {
-            return;
-        }
-        // 已经 return
-        if(stackInfo?.returned) {
+        // 循环 break, continue, return
+        if (loopScopeInfo?.breaked || loopScopeInfo?.continued || stackInfo?.returned) {
             return;
         }
         if(stmt.type === "ReturnStatement") {
             try {
-                // 返回并且返回参数
+                // return 标记和参数
                 stackInfo.returned = true;
                 stackInfo.returnValue = execute(stmt.argument, scopes);
             } catch (err) {
@@ -54,7 +41,7 @@ function executeBody(t, scopes) {
         }
         if (stmt.type === "BreakStatement") {
             try {
-                // 删除标记
+                // break 标记
                 loopScopeInfo.breaked = true;
             } catch (err) {
                 throw new Error("找不到要 break 的循环");
@@ -62,6 +49,7 @@ function executeBody(t, scopes) {
             return true;
         }else if (stmt.type === "ContinueStatement") {
             try {
+                // continue 标记
                 loopScopeInfo.continued = true;
             } catch (err) {
                 throw new Error("找不到要 continue 的循环");
@@ -87,7 +75,7 @@ export default {
         return executeBody(t, newScopes);
     },
     "WhileStatement": (t, scopes) => {
-        const scope = createScope({ tags: [LOOP_BODY_IDENTIFIER] });
+        const scope = createScope();
         const newScopes = [...scopes, scope];
 
         loopScopesInfos.set(scope, { breaked: false, continued: false });

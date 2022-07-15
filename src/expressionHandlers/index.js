@@ -2,6 +2,7 @@ import { default as unaryExpression } from "./unaryExpression.js";
 import { default as binaryExpression } from "./binaryExpression.js";
 import { default as assignmentExpression } from "./assignmentExpression.js";
 import { default as updateExpression } from "./updateExpression.js";
+import { default as logicalExpression } from "./logicalExpression.js";
 
 import { getVariable, getProperty, getParams } from "../shared.js";
 import { execute } from "../runtime.js";
@@ -33,14 +34,22 @@ export default {
     "ArrayExpression": (t, scopes) => (t?.elements?.map(el => execute(el, scopes)) || []),
     "MemberExpression": (t, scopes) => execute(t.object, scopes)[getProperty(t, scopes)],
     "CallExpression": (t, scopes) => {
-        // 获得调用者
-        const caller = execute(t.callee, scopes);
-        // 调用 ----后续需考虑 this 问题----
-        return caller(...(t?.arguments?.map(param => execute(param, scopes)) || []));
+        const params = [...(t?.arguments?.map(param => execute(param, scopes)) || [])];
+        if (t.callee.type === "MemberExpression") {
+            // 对象成员形式的调用，考虑 this
+            const object = execute(t.callee.object, scopes);
+            const property = getProperty(t.callee, scopes);
+            object[property](...params);
+        } else {
+            // 获得调用者
+            const caller = execute(t.callee, scopes);
+            return caller(...params);
+        }
     },
     "UpdateExpression": updateExpression,
     "UnaryExpression": unaryExpression,
     "BinaryExpression": binaryExpression,
+    "LogicalExpression": logicalExpression,
     "ConditionalExpression": (t, scopes) => (execute(t.test, scopes) ? execute(t.consequent, scopes) : execute(t.alternate, scopes)),
     "AssignmentExpression": assignmentExpression,
 }
