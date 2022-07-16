@@ -1,11 +1,14 @@
 import { execute } from "../runtime.js";
-import { setVariable, getParams } from "../shared.js";
+import { setVariable, getParams, getVariables } from "../shared.js";
 
 // 纯的语句，除作用域和栈外无其他依赖，不需要改动多处，所有逻辑均在此处的语句
 export default {
     "VariableDeclaration": (t, scopes) => {
         t.declarations?.forEach(declaration => {
-            setVariable({ name: declaration.id.name, value: execute(declaration.init, scopes), kind: t.kind }, scopes);
+            // 获取变量，可能是一个或是解构的多个
+            const variables = getVariables({ id: declaration.id, value: execute(declaration.init, scopes) }, scopes);
+            // 绑定到作用域
+            Object.entries(variables).forEach(([key, value]) => setVariable({ name: key, value, kind: t.kind }, scopes));
         });
     },
     "FunctionDeclaration": (t, scopes) => {
@@ -14,7 +17,8 @@ export default {
                 {
                     name: t.id.name,
                     value: function (...realParams) {
-                        return (execute(t.body, scopes, { extraVariables: getParams({ params: t.params, realParams }, scopes), stack: true }));
+                        // 执行并且绑定参数和this
+                        return (execute(t.body, scopes, { extraVariables: { "this": this, ...getParams({ params: t.params, realParams }, scopes) }, stack: true }));
                     },
                     kind: "var"
                 },

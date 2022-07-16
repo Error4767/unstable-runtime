@@ -2,13 +2,12 @@ import { execute } from "../runtime.js";
 import { getProperty } from "../shared.js";
 
 const handlers = {
-    "!": v=> !v,
-    "~": v=> ~v,
-    "+": v=> +v,
-    "-": v=> -v,
-    "typeof": v=> typeof v,
-    "void": v=> void v,
-    "~": v=> ~v,
+    "!": (v, scopes)=> ! execute(v, scopes),
+    "~": (v, scopes)=> ~ execute(v, scopes),
+    "+": (v, scopes)=> + execute(v, scopes),
+    "-": (v, scopes)=> - execute(v, scopes),
+    "typeof": (v, scopes)=> typeof execute(v, scopes),
+    "void": (v, scopes)=> void execute(v, scopes),
     // delete 特殊处理
     "delete": (t, scopes)=> {
         if(t.type === "MemberExpression") {

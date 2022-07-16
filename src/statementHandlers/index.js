@@ -1,5 +1,5 @@
 import { execute } from "../runtime.js";
-import { createScope, isStack, stackInfos, findStack } from "../shared.js";
+import { createScope, isStack, stackInfos, findStack, getVariables, bindVariablesToThisScope, setVariable } from "../shared.js";
 
 import purStatements from "./purStatements.js";
 
@@ -29,7 +29,7 @@ function executeBody(t, scopes) {
         if (loopScopeInfo?.breaked || loopScopeInfo?.continued || stackInfo?.returned) {
             return;
         }
-        if(stmt.type === "ReturnStatement") {
+        if (stmt.type === "ReturnStatement") {
             try {
                 // return 标记和参数
                 stackInfo.returned = true;
@@ -47,7 +47,7 @@ function executeBody(t, scopes) {
                 throw new Error("找不到要 break 的循环");
             }
             return true;
-        }else if (stmt.type === "ContinueStatement") {
+        } else if (stmt.type === "ContinueStatement") {
             try {
                 // continue 标记
                 loopScopeInfo.continued = true;
@@ -60,7 +60,7 @@ function executeBody(t, scopes) {
         return false;
     });
     // 如果是栈，返回返回值
-    if(isStack(scopes.at(-1))) {
+    if (isStack(scopes.at(-1))) {
         return stackInfo.returnValue;
     }
 }
@@ -83,7 +83,7 @@ export default {
         // continued 重置
         while ((loopScopesInfos.get(scope).continued = false, execute(t.test, newScopes))) {
             execute(t.body, newScopes);
-            // 不存在该循环，就break掉，或者已经返回也是
+            // 检查标记break，和当前栈是否 return
             if (loopScopesInfos.get(scope)?.breaked || stackInfos.get(findStack(scopes))?.returned) {
                 break;
             }
@@ -115,7 +115,7 @@ export default {
             const condition = execute(t.test, newScopes);
             if (condition) {
                 executeBody(t.body, newScopes);
-                // 不存在该循环，就break掉，或者已经返回也是
+                // 检查标记break，和当前栈是否 return
                 if (loopScopesInfos.get(scope)?.breaked || stackInfos.get(findStack(scopes))?.returned) {
                     break;
                 }
@@ -127,5 +127,34 @@ export default {
             // 执行完毕，保存初始化的值目前的值
             bindKeys.forEach(key => (preVariables[key] = scope[key]));
         }
-    }
+    },
+    "ForInStatement": (t, scopes) => {
+        let id = t;
+        let kind = null;
+        // 如果是 VariableDeclaration 则 id 从 declarations 中取第一个
+        if (t.left.type === "VariableDeclaration") {
+            id = t.left.declarations[0].id;
+            kind = t.left.kind;
+        }
+        for (let key in execute(t.right, scopes)) {
+            const scope = createScope({});
+            const newScopes = [...scopes, scope];
+            loopScopesInfos.set(scope, { breaked: false, continued: false });
+            // 获取出需要绑定的变量
+            const variables = getVariables({ id, value: key });
+            // 如果有类型，直接绑定到当前作用域
+            if (kind) {
+                bindVariablesToThisScope({ variables, kind }, scope);
+            } else {
+                // 没有类型，使用 setVariable 设置每个值
+                Object.entries(variables).forEach(([key, value]) => setVariable({ name: key, value }, newScopes));
+            }
+            executeBody(t.body, newScopes);
+            // 检查标记break，和当前栈是否 return
+            if (loopScopesInfos.get(scope)?.breaked || stackInfos.get(findStack(scopes))?.returned) {
+                break;
+            }
+        }
+
+    },
 }

@@ -4,7 +4,7 @@ import { default as assignmentExpression } from "./assignmentExpression.js";
 import { default as updateExpression } from "./updateExpression.js";
 import { default as logicalExpression } from "./logicalExpression.js";
 
-import { getVariable, getProperty, getParams } from "../shared.js";
+import { getVariable, getProperty, getParams, createScope } from "../shared.js";
 import { execute } from "../runtime.js";
 
 export default {
@@ -14,14 +14,19 @@ export default {
     },
     "FunctionExpression": (t, scopes) => {
         return function (...realParams) {
-            return (execute(t.body, scopes, { extraVariables: getParams({ params: t.params, realParams }, scopes), stack: true }))
+            // 执行并且绑定参数和this
+            return (execute(t.body, scopes, { extraVariables: { "this": this, ...getParams({ params: t.params, realParams }, scopes) }, stack: true }))
         };
     },
     "ArrowFunctionExpression": (t, scopes) => {
-        return (...realParams) => (execute(t.body, scopes, { extraVariables: getParams({ params: t.params, realParams }, scopes), stack: true }));
-    },
-    "ArrayExpreesion": (t, scopes) => {
-        return t?.elements?.map(element => execute(element, scopes)) || [];
+        return (...realParams) => {
+            const scopeOptions = { extraVariables: getParams({ params: t.params, realParams }, scopes), stack: true };
+            if (t.body.type !== "BlockStatement") {
+                const scope = createScope(scopeOptions);
+                return execute(t.body, [...scopes, scope]);
+            }
+            return (execute(t.body, scopes, scopeOptions));
+        };
     },
     "ObjectExpression": (t, scopes) => {
         const result = {};
@@ -38,8 +43,9 @@ export default {
         if (t.callee.type === "MemberExpression") {
             // 对象成员形式的调用，考虑 this
             const object = execute(t.callee.object, scopes);
+
             const property = getProperty(t.callee, scopes);
-            object[property](...params);
+            return object[property](...params);
         } else {
             // 获得调用者
             const caller = execute(t.callee, scopes);

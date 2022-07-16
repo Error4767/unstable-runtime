@@ -44,3 +44,19 @@ export function setVariable({ name, value, kind }, scopes) {
     // 如果没有类型，且该作用域找不到变量，设置到顶层作用域
     setThisScopeVariable({ name, value }, scopes[0]);
 }
+
+// 获得一个或者一组变量，接受的 value 必须是已经被计算的，不能是 ast
+export function getVariables({ id, value }) {
+    if(id.type === "Identifier") {
+        return {
+            [id.name]: value,
+        };
+    }
+    // ----对象和数组解构----，后续支持
+    // if(id.type === "ObjectPatterm") {
+
+    // }
+    // if(id.type === "ArrayPattern") {
+        
+    // }
+}
