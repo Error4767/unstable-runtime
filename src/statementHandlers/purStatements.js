@@ -32,4 +32,23 @@ export default {
     "IfStatement": (t, scopes) => {
         execute(t.test, scopes) ? execute(t.consequent, scopes) : (t.alternate && execute(t.alternate, scopes));
     },
+    "ThrowStatement": (t, scopes) => {
+        throw execute(t.argument, scopes);
+    },
+    "DebuggerStatement": () => {
+        debugger;
+    },
+    "EmptyStatement": () => { },
+    "TryStatement": (t, scopes) => {
+        try {
+            execute(t.block, scopes);
+        } catch (e) {
+            if (t.handler) {
+                let extraVariables = t.handler.param ? getVariables({ id: t.handler.param, value: e }, scopes) : {};
+                execute(t.handler.body, scopes, { extraVariables });
+            }
+        } finally {
+            t.finalizer && execute(t.finalizer, scopes);
+        }
+    }
 }

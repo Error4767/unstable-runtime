@@ -3,7 +3,7 @@ import { bindVariablesToThisScope } from "./currentScopeAction.js";
 // 执行栈标记
 const stackIdentifier = Symbol("stack");
 // 存放栈信息的map
-export const stackInfos = new WeakMap();
+export const stackInfos = new WeakMap(); // Map<{returned: boolean, returnValue: any}>
 
 export const isStack = (scope) => scope[stackIdentifier];
 

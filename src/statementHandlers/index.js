@@ -13,7 +13,7 @@ function findLoopScope(scopes) {
 }
 
 // 存放循环作用域的信息的 map (scope -> loopScopeInfos)
-const loopScopesInfos = new WeakMap();
+const loopScopesInfos = new WeakMap(); // Map<{breaked: boolean, continued: boolean}>
 
 function executeBody(t, scopes) {
     let loopScopeInfo = loopScopesInfos.get(findLoopScope(scopes));
@@ -155,6 +155,5 @@ export default {
                 break;
             }
         }
-
     },
 }
