@@ -45,18 +45,55 @@ export function setVariable({ name, value, kind }, scopes) {
     setThisScopeVariable({ name, value }, scopes[0]);
 }
 
+// 解构，返回一个对象，含有所有被解构的变量，key为变量名，value是对象属性路径
+function getPropertyPaths(id, variablePath = []) {
+    const variablesPaths = {};
+    // ----对象和数组解构----，后续支持
+    if (id.type === "ObjectPattern") {
+        id.properties?.forEach(item => {
+            const { key, value: pattern } = item;
+
+            if (pattern.type === "Identifier") {
+                variablesPaths[pattern.name] = [...variablePath, key.name];
+            }
+            if (pattern.type === "ObjectPattern" || pattern.type === "ArrayPattern") {
+                const innerVariablePaths = getPropertyPaths(pattern, [...variablePath, key.name]);
+                Object.assign(variablesPaths, innerVariablePaths);
+            }
+        });
+    }
+    if (id.type === "ArrayPattern") {
+        id.elements?.forEach((pattern, index) => {
+            // 如果为空，直接返回，因为数组解构模式可以含有空位
+            if (!pattern) { return };
+            if (pattern.type === "Identifier") {
+                variablesPaths[pattern.name] = [...variablePath, index];
+            }
+            if (pattern.type === "ObjectPattern" || pattern.type === "ArrayPattern") {
+                const innerVariablePaths = getPropertyPaths(pattern, [...variablePath, index]);
+                Object.assign(variablesPaths, innerVariablePaths);
+            }
+        });
+    }
+    return variablesPaths;
+}
+
 // 获得一个或者一组变量，接受的 value 必须是已经被计算的，不能是 ast
 export function getVariables({ id, value }) {
-    if(id.type === "Identifier") {
+    if (id.type === "Identifier") {
         return {
             [id.name]: value,
         };
     }
-    // ----对象和数组解构----，后续支持
-    // if(id.type === "ObjectPatterm") {
-
-    // }
-    // if(id.type === "ArrayPattern") {
-        
-    // }
+    if (id.type === "ObjectPattern" || id.type === "ArrayPattern") {
+        const variablesPaths = getPropertyPaths(id);
+        const variables = {};
+        for (const key in variablesPaths) {
+            // 根据属性链获取值
+            variables[key] = variablesPaths[key].reduce((object, key) => {
+                return object[key];
+            }, value);
+        }
+        return variables;
+    }
 }
