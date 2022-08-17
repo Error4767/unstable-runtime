@@ -15,7 +15,15 @@ export function getParams({ params, realParams, this: self }, scopes) {
         if (param.type === "AssignmentPattern") {
             const { left, right: initial } = param;
             Object.assign(result, getVariables({ id: left, value: value || initial }, scopes));
-        } else if (param) {
+        } else if (param.type === "RestElement") {
+            // 如果不是最后一个参数则标错
+            if(index !== params.length - 1) {
+                throw new SyntaxError("Rest parameter must be last formal parameter");
+            }
+            // 收集剩余参数，这里支持解构
+            Object.assign(result, getVariables({ id: param.argument, value: realParams.slice(index) }, scopes));
+        }
+        else if (param) {
             Object.assign(result, getVariables({ id: param, value }, scopes));
         }
     });

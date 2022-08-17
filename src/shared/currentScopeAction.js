@@ -19,6 +19,6 @@ export function setThisScopeVariable({ name, value, kind = "var" }, scope) {
 export function bindVariablesToThisScope({ variables, kind = "var" }, scope) {
     for (let key in variables) {
         const value = variables[key];
-        setThisScopeVariable({ name: key, value }, scope);
+        setThisScopeVariable({ name: key, value, kind }, scope);
     }
 }
