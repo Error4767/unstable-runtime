@@ -227,8 +227,8 @@ export default {
                 }
             }
         });
-        // 如果 default 以外其他的没有匹配成功的，那么以 default 作为第一个成功的执行其以及其后的所有 case
-        if(!isTestSucceed) {
+        // 如果 default 以外其他的没有匹配成功的，那么以 default 作为第一个成功的执行其以及其后的所有 case (如果有的话)
+        if(!isTestSucceed && splitedCasesStartFromDefualt) {
             splitedCasesStartFromDefualt.some(switchCaseItem=> run(switchCaseItem));
         }
     }
