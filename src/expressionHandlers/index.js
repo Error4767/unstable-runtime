@@ -3,6 +3,7 @@ import { default as binaryExpression } from "./binaryExpression.js";
 import { default as assignmentExpression } from "./assignmentExpression.js";
 import { default as updateExpression } from "./updateExpression.js";
 import { default as logicalExpression } from "./logicalExpression.js";
+import { templateLiteral, taggedTemplateExpression } from "./templateString.js";
 
 import { getVariable, getProperty, getParams, createScope } from "../shared.js";
 import { execute } from "../runtime.js";
@@ -80,4 +81,6 @@ export default {
     "LogicalExpression": logicalExpression,
     "ConditionalExpression": (t, scopes) => (execute(t.test, scopes) ? execute(t.consequent, scopes) : execute(t.alternate, scopes)),
     "AssignmentExpression": assignmentExpression,
+    "TemplateLiteral": templateLiteral,
+    "TaggedTemplateExpression": taggedTemplateExpression,
 }
