@@ -60,18 +60,57 @@ export default {
         });
         return result;
     },
-    "MemberExpression": (t, scopes) => execute(t.object, scopes)[getProperty(t, scopes)],
-    "CallExpression": (t, scopes) => {
+    "MemberExpression": (t, scopes, extraInfos = { optionalChainFailed: false }) => {
+        // 只要链失败，直接结束
+        if (extraInfos.optionalChainFailed) {
+            return;
+        }
+        const object = execute(t.object, scopes, extraInfos);
+        // 只要链失败，直接结束
+        if (extraInfos.optionalChainFailed) {
+            return;
+        }
+        // 如果可选且不存在，那么直接返回，并且整个链就失败，返回 undefined
+        if (t.optional && object === undefined) {
+            extraInfos.optionalChainFailed = true;
+            return;
+        }
+        // 如果，那么继续动作
+        const result = object[getProperty(t, scopes)];
+        return result;
+    },
+    "CallExpression": (t, scopes, extraInfos = { optionalChainFailed: false }) => {
+        // 只要链失败，直接结束
+        if (extraInfos.optionalChainFailed) {
+            return;
+        }
         const params = [...(t?.arguments?.map(param => execute(param, scopes)) || [])];
         if (t.callee.type === "MemberExpression") {
             // 对象成员形式的调用，考虑 this
             const object = execute(t.callee.object, scopes);
-
             const property = getProperty(t.callee, scopes);
+            // 只要链失败，直接结束
+            if (extraInfos.optionalChainFailed) {
+                return;
+            }
+            // 如果可选且不存在，那么直接返回，并且整个链就失败，返回 undefined
+            if (t.optional && object[property] === undefined) {
+                extraInfos.optionalChainFailed = true;
+                return;
+            }
             return object[property](...params);
         } else {
             // 获得调用者
             const caller = execute(t.callee, scopes);
+            // 只要链失败，直接结束
+            if (extraInfos.optionalChainFailed) {
+                return;
+            }
+            // 如果可选且不存在，那么直接返回，并且整个链就失败，返回 undefined
+            if (t.optional && object === undefined) {
+                extraInfos.optionalChainFailed = true;
+                return;
+            }
             return caller(...params);
         }
     },
