@@ -114,6 +114,7 @@ export default {
             return caller(...params);
         }
     },
+    "ChainExpression": (t, scopes)=> execute(t.expression, scopes),
     "UpdateExpression": updateExpression,
     "UnaryExpression": unaryExpression,
     "BinaryExpression": binaryExpression,
