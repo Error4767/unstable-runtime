@@ -3,30 +3,47 @@ import { createScope, isStack, stackInfos, findStack, getVariables, bindVariable
 
 import purStatements from "./purStatements.js";
 
-// 找到循环作用域
-function findLoopScope(scopes) {
-    let loopScope = null;
+// 查找作用域链中，是否有存在 scopeMaps 中的作用域，有则返回那个作用域
+function findScopeInScopeMaps(scopes, scopeMaps) {
+    let targetScope = null;
     scopes.forEach((scope) => {
-        loopScopesInfos.get(scope) && (loopScope = scope);
+        scopeMaps.get(scope) && (targetScope = scope);
     });
-    return loopScope;
+    return targetScope;
 }
 
 // 存放循环作用域的信息的 map (scope -> loopScopeInfos)
 const loopScopesInfos = new WeakMap(); // Map<{breaked: boolean, continued: boolean}>
 
+// 存放标签语句信息的 map
+const labeledScopesInfos = new WeakMap();
+
 function executeBody(t, scopes) {
-    let loopScopeInfo = loopScopesInfos.get(findLoopScope(scopes));
+
+    // 循环作用域
+    const loopScope = findScopeInScopeMaps(scopes, loopScopesInfos);
+    const loopScopeInfo = loopScopesInfos.get(loopScope);
+
+    // 标签作用域
+    const labeledScope = findScopeInScopeMaps(scopes, labeledScopesInfos);
+    const labeledScopeInfo = labeledScopesInfos.get(labeledScope);
+
+    // 所有可 break 的作用域取其在作用域链的位置排序，取最近的一个，下面如果只有 break，则是 break 该作用域
+    const breakedScopeIndex = [scopes.indexOf(loopScope), scopes.indexOf(labeledScope)].filter(index=> index !== -1).sort((v1, v2)=> v1 - v2)?.[0];
+    const breakedScope = scopes?.[breakedScopeIndex];
+    // 找到这个作用域的信息
+    const breakedScopeInfo = loopScopesInfos.get(breakedScope) || labeledScopesInfos.get(breakedScope);
+
     const stackInfo = stackInfos.get(findStack(scopes));
 
-    if (loopScopeInfo?.breaked || loopScopeInfo?.continued || stackInfo?.returned) {
+    if (loopScopeInfo?.breaked || loopScopeInfo?.continued || stackInfo?.returned || labeledScopeInfo?.breaked) {
         return;
     }
 
     // 运行主体代码
     t.body?.some(stmt => {
         // 循环 break, continue, return
-        if (loopScopeInfo?.breaked || loopScopeInfo?.continued || stackInfo?.returned) {
+        if (loopScopeInfo?.breaked || loopScopeInfo?.continued || stackInfo?.returned || labeledScopeInfo?.breaked) {
             return;
         }
         if (stmt.type === "ReturnStatement") {
@@ -42,7 +59,7 @@ function executeBody(t, scopes) {
         if (stmt.type === "BreakStatement") {
             try {
                 // break 标记
-                loopScopeInfo.breaked = true;
+                breakedScopeInfo.breaked = true;
             } catch (err) {
                 throw new SyntaxError("Illegal break statement");
             }
@@ -231,5 +248,16 @@ export default {
         if(!isTestSucceed && splitedCasesStartFromDefualt) {
             splitedCasesStartFromDefualt.some(switchCaseItem=> run(switchCaseItem));
         }
-    }
+    },
+    "LabeledStatement": (t, scopes)=> {
+        const scope = createScope();
+
+        scope.label = t.label.name;
+
+        const newScopes = [...scopes, scope];
+
+        labeledScopesInfos.set(scope, { breaked: false });
+
+        execute(t.body, newScopes);
+    },
 }
