@@ -18,7 +18,7 @@ export default {
                     name: t.id.name,
                     value: function (...realParams) {
                         // 执行并且绑定参数和this
-                        return (execute(t.body, scopes, { extraVariables: { "this": this, ...getParams({ params: t.params, realParams }, scopes) }, stack: true }));
+                        return (execute(t.body, scopes, { extraVariables: { ...(this ? { "this": this } : {}), ...getParams({ params: t.params, realParams }, scopes) }, stack: true }));
                     },
                     kind: "var"
                 },

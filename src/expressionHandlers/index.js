@@ -15,8 +15,8 @@ export default {
     },
     "FunctionExpression": (t, scopes) => {
         return function (...realParams) {
-            // 执行并且绑定参数和this
-            return (execute(t.body, scopes, { extraVariables: { "this": this, ...getParams({ params: t.params, realParams }, scopes) }, stack: true }))
+            // 执行并且(如果存在 this，就绑定 this)
+            return (execute(t.body, scopes, { extraVariables: { ...(this ? { "this": this } : {}), ...getParams({ params: t.params, realParams }, scopes) }, stack: true }))
         };
     },
     "ArrowFunctionExpression": (t, scopes) => {
@@ -123,4 +123,18 @@ export default {
     "AssignmentExpression": assignmentExpression,
     "TemplateLiteral": templateLiteral,
     "TaggedTemplateExpression": taggedTemplateExpression,
+    "ThisExpression": (t, scopes)=> getVariable("this", scopes),
+    "NewExpression": (t, scopes)=> {
+        // 参数
+        const params = [...(t?.arguments?.map(param => execute(param, scopes)) || [])];
+        // 调用的函数本身
+        const caller = execute(t.callee, scopes);
+        // 创建实例
+        const instance = {};
+        Object.setPrototypeOf(instance, caller.prototype);
+        // 调用构造函数
+        const returnedValue = caller.call(instance, ...params);
+        // 如果返回值是非 null 的引用类型，则直接返回，否则，返回创建的实例
+        return (typeof returnedValue === "object" && returnedValue !== null) ? returnedValue : instance;
+    },
 }
