@@ -20,7 +20,7 @@ export function getVariable(name, scopes) {
     }
     if (name === "this") {
         // 可能没有 this ，此时返回顶层作用域
-        return scopes.at(-1);
+        return scopes[0];
     }
     if (name === null) {
         return null;

@@ -3,20 +3,22 @@ import { createScope, isStack, stackInfos, findStack, getVariables, bindVariable
 
 import purStatements from "./purStatements.js";
 
-// 查找作用域链中，是否有存在 scopeMaps 中的作用域，有则返回那个作用域
-function findScopeInScopeMaps(scopes, scopeMaps) {
-    let targetScope = null;
-    scopes.forEach((scope) => {
-        scopeMaps.get(scope) && (targetScope = scope);
-    });
-    return targetScope;
-}
-
 // 存放循环作用域的信息的 map (scope -> loopScopeInfos)
 const loopScopesInfos = new WeakMap(); // Map<{breaked: boolean, continued: boolean}>
 
 // 存放标签语句信息的 map
 const labeledScopesInfos = new WeakMap();
+
+// 查找作用域链中，是否有存在 scopeMaps 中的作用域，有则返回最近的那个作用域
+const findScopeInScopeMaps = (scopes, scopeMaps) => scopes.findLast((scope) => scopeMaps.get(scope));
+
+// 查找最近的指定 label 的作用域
+const findLabelScope = (scopes, label) => scopes.findLast((scope) => {
+    const labelScopeInfo = labeledScopesInfos.get(scope);
+    if(labelScopeInfo && labelScopeInfo.label === label) {
+        return true;
+    }
+});
 
 function executeBody(t, scopes) {
 
@@ -34,7 +36,8 @@ function executeBody(t, scopes) {
     // 找到这个作用域的信息
     const breakedScopeInfo = loopScopesInfos.get(breakedScope) || labeledScopesInfos.get(breakedScope);
 
-    const stackInfo = stackInfos.get(findStack(scopes));
+    const stack = findStack(scopes);
+    const stackInfo = stackInfos.get(stack);
 
     if (loopScopeInfo?.breaked || loopScopeInfo?.continued || stackInfo?.returned || labeledScopeInfo?.breaked) {
         return;
@@ -57,6 +60,10 @@ function executeBody(t, scopes) {
             return true;
         }
         if (stmt.type === "BreakStatement") {
+            // 如果最近的一层是栈而不是循环，抛出错误
+            if(stack && (scopes.indexOf(stack) > scopes.indexOf(breakedScope))) {
+                throw new SyntaxError("Illegal break statement");
+            }
             try {
                 // break 标记
                 breakedScopeInfo.breaked = true;
@@ -65,6 +72,10 @@ function executeBody(t, scopes) {
             }
             return true;
         } else if (stmt.type === "ContinueStatement") {
+            // 如果最近的一层是栈而不是循环，抛出错误
+            if(stack && (scopes.indexOf(stack) > scopes.indexOf(breakedScope))) {
+                throw new SyntaxError("Illegal continue statement: no surrounding iteration statement");
+            }
             try {
                 // continue 标记
                 loopScopeInfo.continued = true;
@@ -252,11 +263,9 @@ export default {
     "LabeledStatement": (t, scopes)=> {
         const scope = createScope();
 
-        scope.label = t.label.name;
-
         const newScopes = [...scopes, scope];
 
-        labeledScopesInfos.set(scope, { breaked: false });
+        labeledScopesInfos.set(scope, { breaked: false, label: t.label.name });
 
         execute(t.body, newScopes);
     },
