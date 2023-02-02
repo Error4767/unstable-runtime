@@ -10,44 +10,84 @@ const loopScopesInfos = new WeakMap(); // Map<{breaked: boolean, continued: bool
 const labeledScopesInfos = new WeakMap();
 
 // 查找作用域链中，是否有存在 scopeMaps 中的作用域，有则返回最近的那个作用域
-const findScopeInScopeMaps = (scopes, scopeMaps) => scopes.findLast((scope) => scopeMaps.get(scope));
+const findScopeInScopeMapsInThisStack = (scopes, scopeMaps) => {
+    let targetScope = undefined;
+    scopes.findLast((scope, i) => {
+        // 遇到最近的栈了，停止查找
+        if (isStack(scope)) {
+            return true;
+        }
+        if (scopeMaps.get(scope)) {
+            targetScope = scope
+            return true;
+        }
+        return false;
+    });
+    return targetScope;
+};
 
 // 查找最近的指定 label 的作用域
-const findLabelScope = (scopes, label) => scopes.findLast((scope) => {
-    const labelScopeInfo = labeledScopesInfos.get(scope);
-    if(labelScopeInfo && labelScopeInfo.label === label) {
-        return true;
-    }
-});
+const findLabelScopeInThisStack = (scopes, label) => {
+    let targetScope = undefined;
+    scopes.findLast((scope) => {
+         // 遇到最近的栈了，停止查找
+        if(isStack(scope)) {
+            return true;
+        }
+        const labelScopeInfo = labeledScopesInfos.get(scope);
+        if (labelScopeInfo && labelScopeInfo.label === label) {
+            targetScope = scope;
+            return true;
+        }
+        return false;
+    });
+    return targetScope;
+};
+
+// 检测这层作用域是否执行完毕
+const scopeIsExecuted = (scope)=> (
+    loopScopesInfos.get(scope)?.breaked
+    ||
+    loopScopesInfos.get(scope)?.continued
+    ||
+    labeledScopesInfos.get(scope)?.breaked
+    ||
+    labeledScopesInfos.get(scope)?.continued
+    ||
+    stackInfos.get(scope)?.returned
+);
+
+// 检测自己及上层作用域是否已经执行结束
+const scopeChainIsExecuted = (scopes) => scopes.some(scope => scopeIsExecuted(scope));
 
 function executeBody(t, scopes) {
 
     // 循环作用域
-    const loopScope = findScopeInScopeMaps(scopes, loopScopesInfos);
+    const loopScope = findScopeInScopeMapsInThisStack(scopes, loopScopesInfos);
     const loopScopeInfo = loopScopesInfos.get(loopScope);
 
     // 标签作用域
-    const labeledScope = findScopeInScopeMaps(scopes, labeledScopesInfos);
-    const labeledScopeInfo = labeledScopesInfos.get(labeledScope);
+    const labeledScope = findScopeInScopeMapsInThisStack(scopes, labeledScopesInfos);
 
     // 所有可 break 的作用域取其在作用域链的位置排序，取最近的一个，下面如果只有 break，则是 break 该作用域
-    const breakedScopeIndex = [scopes.indexOf(loopScope), scopes.indexOf(labeledScope)].filter(index=> index !== -1).sort((v1, v2)=> v1 - v2)?.[0];
+    const breakedScopeIndex = [scopes.indexOf(loopScope), scopes.indexOf(labeledScope)].filter(index => index !== -1).sort((v1, v2) => v1 - v2)?.[0];
     const breakedScope = scopes?.[breakedScopeIndex];
     // 找到这个作用域的信息
     const breakedScopeInfo = loopScopesInfos.get(breakedScope) || labeledScopesInfos.get(breakedScope);
 
+    // 栈
     const stack = findStack(scopes);
     const stackInfo = stackInfos.get(stack);
 
-    if (loopScopeInfo?.breaked || loopScopeInfo?.continued || stackInfo?.returned || labeledScopeInfo?.breaked) {
+    if (scopeChainIsExecuted(scopes)) {
         return;
     }
 
     // 运行主体代码
     t.body?.some(stmt => {
         // 循环 break, continue, return
-        if (loopScopeInfo?.breaked || loopScopeInfo?.continued || stackInfo?.returned || labeledScopeInfo?.breaked) {
-            return;
+        if (scopeChainIsExecuted(scopes)) {
+            return true;
         }
         if (stmt.type === "ReturnStatement") {
             try {
@@ -60,27 +100,39 @@ function executeBody(t, scopes) {
             return true;
         }
         if (stmt.type === "BreakStatement") {
-            // 如果最近的一层是栈而不是循环，抛出错误
-            if(stack && (scopes.indexOf(stack) > scopes.indexOf(breakedScope))) {
-                throw new SyntaxError("Illegal break statement");
-            }
-            try {
-                // break 标记
-                breakedScopeInfo.breaked = true;
-            } catch (err) {
-                throw new SyntaxError("Illegal break statement");
+            if(stmt.label) {
+                const scope = findLabelScopeInThisStack(scopes, stmt.label.name);
+                try {
+                    console.log("break label")
+                    labeledScopesInfos.get(scope).breaked = true;
+                } catch (err) {
+                    throw new SyntaxError(`Uncaught SyntaxError: Undefined label '${stmt.label.name}'`);
+                }
+            }else {
+                try {
+                    // break 标记
+                    breakedScopeInfo.breaked = true;
+                } catch (err) {
+                    throw new SyntaxError("Illegal break statement");
+                }
             }
             return true;
         } else if (stmt.type === "ContinueStatement") {
-            // 如果最近的一层是栈而不是循环，抛出错误
-            if(stack && (scopes.indexOf(stack) > scopes.indexOf(breakedScope))) {
-                throw new SyntaxError("Illegal continue statement: no surrounding iteration statement");
-            }
-            try {
-                // continue 标记
-                loopScopeInfo.continued = true;
-            } catch (err) {
-                throw new SyntaxError("Illegal continue statement: no surrounding iteration statement");
+            if(stmt.label) {
+                const scope = findLabelScopeInThisStack(scopes, stmt.label.name);
+                try {
+                    console.log("break label")
+                    labeledScopesInfos.get(scope).continued = true;
+                } catch (err) {
+                    throw new SyntaxError(`Uncaught SyntaxError: Undefined label '${stmt.label.name}'`);
+                }
+            }else {
+                try {
+                    // continue 标记
+                    loopScopeInfo.continued = true;
+                } catch (err) {
+                    throw new SyntaxError("Illegal continue statement: no surrounding iteration statement");
+                }
             }
             return true;
         }
@@ -102,8 +154,8 @@ export default {
 
         return executeBody(t, newScopes);
     },
-    "WhileStatement": (t, scopes) => {
-        const scope = createScope();
+    "WhileStatement": (t, scopes, options) => {
+        const scope = createScope(options);
         const newScopes = [...scopes, scope];
 
         loopScopesInfos.set(scope, { breaked: false, continued: false });
@@ -112,17 +164,17 @@ export default {
         while ((loopScopesInfos.get(scope).continued = false, execute(t.test, newScopes))) {
             execute(t.body, newScopes);
             // 检查标记break，和当前栈是否 return
-            if (loopScopesInfos.get(scope)?.breaked || stackInfos.get(findStack(scopes))?.returned) {
+            if (loopScopesInfos.get(scope)?.breaked || stackInfos.get(findStack(scopes))?.returned || labeledScopesInfos.get(scope)?.breaked) {
                 break;
             }
         }
     },
-    "ForStatement": (t, scopes) => {
+    "ForStatement": (t, scopes, options) => {
         // 上次循环的变量值
         let preVariables;
 
         while (true) {
-            const scope = createScope();
+            const scope = createScope(options);
             loopScopesInfos.set(scope, { breaked: false, continued: false });
 
             const newScopes = [...scopes, scope];
@@ -144,7 +196,7 @@ export default {
             if (condition) {
                 executeBody(t.body, newScopes);
                 // 检查标记break，和当前栈是否 return
-                if (loopScopesInfos.get(scope)?.breaked || stackInfos.get(findStack(scopes))?.returned) {
+                if (loopScopesInfos.get(scope)?.breaked || stackInfos.get(findStack(scopes))?.returned || labeledScopesInfos.get(scope)?.breaked) {
                     break;
                 }
             } else {
@@ -156,7 +208,7 @@ export default {
             bindKeys.forEach(key => (preVariables[key] = scope[key]));
         }
     },
-    "ForInStatement": (t, scopes) => {
+    "ForInStatement": (t, scopes, options = {}) => {
         let id = t;
         let kind = null;
         // 如果是 VariableDeclaration 则 id 从 declarations 中取第一个
@@ -165,7 +217,7 @@ export default {
             kind = t.left.kind;
         }
         for (let key in execute(t.right, scopes)) {
-            const scope = createScope({});
+            const scope = createScope(options);
             const newScopes = [...scopes, scope];
             loopScopesInfos.set(scope, { breaked: false, continued: false });
             // 获取出需要绑定的变量
@@ -179,12 +231,12 @@ export default {
             }
             executeBody(t.body, newScopes);
             // 检查标记break，和当前栈是否 return
-            if (loopScopesInfos.get(scope)?.breaked || stackInfos.get(findStack(scopes))?.returned) {
+            if (loopScopesInfos.get(scope)?.breaked || stackInfos.get(findStack(scopes))?.returned || labeledScopesInfos.get(scope)?.breaked) {
                 break;
             }
         }
     },
-    "SwitchStatement": (t, scopes)=> {
+    "SwitchStatement": (t, scopes, options) => {
         /* 
             1. switch 的行为，一旦有一个 case 成功，那么就会执行其和其后 case 的动作，并且之后的 case 的动作不会触发条件检测，会直接执行动作，使用 break 退出 switch 语句
             switch default 的行为: 
@@ -195,30 +247,30 @@ export default {
 
             上述解释是 switch 的一些行为，这可以帮助理解下面的代码为何如此执行，使得其符合 JS 标准
         */
-        
+
         // 需要匹配的值
         const matchValue = execute(t.discriminant, scopes);
 
         // 创建 switch 主体作用域
-        const scope = createScope();
+        const scope = createScope(options);
         const newScopes = [...scopes, scope];
         // 由于break 和循环相近，便于实现这里直接设置其为循环，赋予其循环的性质
         loopScopesInfos.set(scope, { breaked: false, continued: false });
 
         // 如果 default 数量超过1，报错 
-        const defaultNumber = t.cases?.reduce((o, n)=> {
-            return  !n.test ? o + 1 : o;
+        const defaultNumber = t.cases?.reduce((o, n) => {
+            return !n.test ? o + 1 : o;
         }, 0);
-        if(defaultNumber > 1) {
+        if (defaultNumber > 1) {
             throw new SyntaxError("More than one default clause in switch statement");
         }
 
         // 运行 case 的方法
-        const run = (switchCaseItem)=> {
+        const run = (switchCaseItem) => {
             // 判断成功并且有对应动作代码就执行，这里直接 executeBody，因为 case 属于 switch 主体的那个作用域，不需要再次创建一个作用域
-            switchCaseItem.consequent && executeBody({body: switchCaseItem.consequent}, newScopes);
+            switchCaseItem.consequent && executeBody({ body: switchCaseItem.consequent }, newScopes);
             // 检查标记break，和当前栈是否 return, 如果是，结束遍历执行
-            if (loopScopesInfos.get(scope)?.breaked || stackInfos.get(findStack(scopes))?.returned) {
+            if (loopScopesInfos.get(scope)?.breaked || stackInfos.get(findStack(scopes))?.returned || labeledScopesInfos.get(scope)?.breaked) {
                 return true;
             }
         }
@@ -228,45 +280,43 @@ export default {
         // 从 default 开始截取的 cases
         let splitedCasesStartFromDefualt = null;
         // 执行 switch 主体匹配
-        t.cases?.some((switchCaseItem, index)=> {
+        t.cases?.some((switchCaseItem, index) => {
             // 如果已经成功过了，直接运行代码
-            if(isTestSucceed) {
+            if (isTestSucceed) {
                 return run(switchCaseItem);
             }
-            if(switchCaseItem.test) {
+            if (switchCaseItem.test) {
                 // 执行代码, 如果已经成功过，那么直接跳过判断，否则检测 test 表达式
                 const testResult = isTestSucceed || execute(switchCaseItem.test, newScopes) === matchValue;
                 // 判断成功
-                if(testResult) {
+                if (testResult) {
                     // 已匹配过为false, 那么就设置为已匹配过
                     !isTestSucceed && (isTestSucceed = true);
                     return run(switchCaseItem);
                 }
                 // 不成功，则不做动作
-            }else {
+            } else {
                 // 如果是最后一个，则直接运行，不是，则先记录
-                if(index === t.cases.length - 1) {
+                if (index === t.cases.length - 1) {
                     // 这里设置为 true 以便下面不在运行
                     isTestSucceed = true;
                     return run(switchCaseItem);
-                }else {
+                } else {
                     // 存储从 default 开始的 switch
                     splitedCasesStartFromDefualt = t.cases.slice(index);
                 }
             }
         });
         // 如果 default 以外其他的没有匹配成功的，那么以 default 作为第一个成功的执行其以及其后的所有 case (如果有的话)
-        if(!isTestSucceed && splitedCasesStartFromDefualt) {
-            splitedCasesStartFromDefualt.some(switchCaseItem=> run(switchCaseItem));
+        if (!isTestSucceed && splitedCasesStartFromDefualt) {
+            splitedCasesStartFromDefualt.some(switchCaseItem => run(switchCaseItem));
         }
     },
-    "LabeledStatement": (t, scopes)=> {
-        const scope = createScope();
-
-        const newScopes = [...scopes, scope];
-
-        labeledScopesInfos.set(scope, { breaked: false, label: t.label.name });
-
-        execute(t.body, newScopes);
+    "LabeledStatement": (t, scopes) => {
+        execute(t.body, scopes, {
+            scopeHandleHook(scope) {
+                labeledScopesInfos.set(scope, { label: t.label.name, breaked: false, continued: false });
+            }
+        });
     },
 }

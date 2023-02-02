@@ -11,7 +11,7 @@ export const isStack = (scope) => scope[stackIdentifier];
 export const createRawScope = () => ({});
 
 // 创建作用域，含初始化逻辑
-export const createScope = ({ extraVariables, stack, tags } = {}) => {
+export const createScope = ({ extraVariables, stack, tags, scopeHandleHook } = {}) => {
     const scope = createRawScope();
     tags && (tags.forEach(tag => (scope[tag] = true)));
     // 如果有栈标记，添加栈标记
@@ -20,6 +20,7 @@ export const createScope = ({ extraVariables, stack, tags } = {}) => {
     stackInfos.set(scope, { returned: false, returnValue: undefined });
     // 如果有扩展变量，绑定到作用域，目前用于函数参数绑定
     extraVariables && bindVariablesToThisScope({ variables: extraVariables }, scope);
+    typeof scopeHandleHook === "function" && scopeHandleHook(scope);
     return scope;
 }
 
