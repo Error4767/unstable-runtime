@@ -1,64 +1,20 @@
 import { execute } from "../runtime.js";
-import { createScope, isStack, stackInfos, findStack, getVariables, bindVariablesToThisScope, setVariable } from "../shared.js";
+import { 
+    createScope, 
+    isStack, 
+    stackInfos, 
+    findStack, 
+    getVariables, 
+    bindVariablesToThisScope, 
+    setVariable,
+    loopScopesInfos,
+    labeledScopesInfos,
+    findScopeInScopeMapsInThisStack,
+    findLabelScopeInThisStack,
+    scopeChainIsExecuted,
+} from "../shared.js";
 
 import purStatements from "./purStatements.js";
-
-// 存放循环作用域的信息的 map (scope -> loopScopeInfos)
-const loopScopesInfos = new WeakMap(); // Map<{breaked: boolean, continued: boolean}>
-
-// 存放标签语句信息的 map
-const labeledScopesInfos = new WeakMap();
-
-// 查找作用域链中，是否有存在 scopeMaps 中的作用域，有则返回最近的那个作用域
-const findScopeInScopeMapsInThisStack = (scopes, scopeMaps) => {
-    let targetScope = undefined;
-    scopes.findLast((scope, i) => {
-        // 遇到最近的栈了，停止查找
-        if (isStack(scope)) {
-            return true;
-        }
-        if (scopeMaps.get(scope)) {
-            targetScope = scope
-            return true;
-        }
-        return false;
-    });
-    return targetScope;
-};
-
-// 查找最近的指定 label 的作用域
-const findLabelScopeInThisStack = (scopes, label) => {
-    let targetScope = undefined;
-    scopes.findLast((scope) => {
-         // 遇到最近的栈了，停止查找
-        if(isStack(scope)) {
-            return true;
-        }
-        const labelScopeInfo = labeledScopesInfos.get(scope);
-        if (labelScopeInfo && labelScopeInfo.label === label) {
-            targetScope = scope;
-            return true;
-        }
-        return false;
-    });
-    return targetScope;
-};
-
-// 检测这层作用域是否执行完毕
-const scopeIsExecuted = (scope)=> (
-    loopScopesInfos.get(scope)?.breaked
-    ||
-    loopScopesInfos.get(scope)?.continued
-    ||
-    labeledScopesInfos.get(scope)?.breaked
-    ||
-    labeledScopesInfos.get(scope)?.continued
-    ||
-    stackInfos.get(scope)?.returned
-);
-
-// 检测自己及上层作用域是否已经执行结束
-const scopeChainIsExecuted = (scopes) => scopes.some(scope => scopeIsExecuted(scope));
 
 function executeBody(t, scopes) {
 
@@ -103,7 +59,6 @@ function executeBody(t, scopes) {
             if(stmt.label) {
                 const scope = findLabelScopeInThisStack(scopes, stmt.label.name);
                 try {
-                    console.log("break label")
                     labeledScopesInfos.get(scope).breaked = true;
                 } catch (err) {
                     throw new SyntaxError(`Uncaught SyntaxError: Undefined label '${stmt.label.name}'`);
@@ -119,9 +74,13 @@ function executeBody(t, scopes) {
             return true;
         } else if (stmt.type === "ContinueStatement") {
             if(stmt.label) {
+                // 找到该 label 的作用域
                 const scope = findLabelScopeInThisStack(scopes, stmt.label.name);
+                // 如果 continue label 而不是循环，抛出错误
+                if(!loopScopesInfos.get(scope)) {
+                    throw new Error(`Uncaught SyntaxError: Illegal continue statement: '${stmt.label.name}' does not denote an iteration statement`)
+                }
                 try {
-                    console.log("break label")
                     labeledScopesInfos.get(scope).continued = true;
                 } catch (err) {
                     throw new SyntaxError(`Uncaught SyntaxError: Undefined label '${stmt.label.name}'`);

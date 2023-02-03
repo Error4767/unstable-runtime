@@ -19,8 +19,8 @@ export function getVariable(name, scopes) {
         return undefined;
     }
     if (name === "this") {
-        // 可能没有 this ，此时返回顶层作用域
-        return scopes[0];
+        // 可能没有 this
+        return undefined;
     }
     if (name === null) {
         return null;
