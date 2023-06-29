@@ -16,6 +16,19 @@ import {
 
 import purStatements from "./purStatements.js";
 
+// 优先级相关-声明提升
+const HIGH_PRIORITY_STATEMENTS = [
+    "FunctionDeclaration",
+    "ClassDeclaration",
+];
+const getPriority = (statement)=> {
+    if(HIGH_PRIORITY_STATEMENTS.includes(statement.type)) {
+        return 2;
+    }else {
+        return 1;
+    }
+}
+
 function executeBody(t, scopes) {
 
     // 循环作用域
@@ -39,8 +52,10 @@ function executeBody(t, scopes) {
         return;
     }
 
-    // 运行主体代码
-    t.body?.some(stmt => {
+    // 运行主体代码, 排序声明提升
+    t.body?.toSorted((s1, s2)=> {
+        return getPriority(s2) - getPriority(s1);
+    }).some(stmt => {
         // 循环 break, continue, return
         if (scopeChainIsExecuted(scopes)) {
             return true;
